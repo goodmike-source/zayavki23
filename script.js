@@ -1,4 +1,3 @@
-// Основной класс приложения
 class ServiceTrackApp {
   constructor() {
     this.requests = [];
@@ -8,6 +7,12 @@ class ServiceTrackApp {
       direction: 'asc'
     };
     this.currentEditingId = null;
+    this.pagination = {
+      currentPage: 1,
+      pageSize: 10,
+      totalItems: 0
+    };
+    this.contextRequestId = null;
     
     this.initElements();
     this.initEventListeners();
@@ -16,76 +21,51 @@ class ServiceTrackApp {
     this.setupTheme();
   }
   
-  // Инициализация DOM-элементов
   initElements() {
     this.elements = {
-      appContainer: document.querySelector('.app-container'),
+      appContainer: document.querySelector('.app-layout'),
+      sidebar: document.querySelector('.sidebar'),
+      toggleSidebar: document.querySelector('#toggle-sidebar'),
       tableBody: document.getElementById('table-body'),
       cardsContainer: document.getElementById('cards-container'),
       searchInput: document.getElementById('search-input'),
       statusFilter: document.getElementById('status-filter'),
       urgencyFilter: document.getElementById('urgency-filter'),
-      clearSearch: document.getElementById('clear-search'),
+      clearSearch: document.querySelector('.search-clear'),
       addRequestBtn: document.getElementById('add-request'),
-      toggleViewBtn: document.getElementById('toggle-view'),
+      toggleViewBtn: document.querySelector('.view-switcher'),
       exportExcelBtn: document.getElementById('export-excel'),
       themeToggle: document.getElementById('theme-toggle'),
-      
-      // Модальные окна
       requestModal: document.getElementById('request-modal'),
-      detailsModal: document.getElementById('details-modal'),
-      modalTitle: document.getElementById('modal-title'),
       requestForm: document.getElementById('request-form'),
       closeModalButtons: document.querySelectorAll('.close-modal'),
-      
-      // Форма
       clientInput: document.getElementById('client'),
       productInput: document.getElementById('product'),
       serviceIdInput: document.getElementById('service-id'),
       statusSelect: document.getElementById('status'),
       deadlineInput: document.getElementById('deadline'),
       urgentCheckbox: document.getElementById('urgent'),
-      clientPhoneInput: document.getElementById('client-phone'),
-      scPhoneInput: document.getElementById('sc-phone'),
-      scAddressInput: document.getElementById('sc-address'),
-      commentTextarea: document.getElementById('comment'),
-      
-      // Детали заявки
-      editRequestBtn: document.getElementById('edit-request'),
-      requestIdSpan: document.getElementById('request-id'),
-      detailStatus: document.getElementById('detail-status'),
-      detailUrgency: document.getElementById('detail-urgency'),
-      detailClient: document.getElementById('detail-client'),
-      detailProduct: document.getElementById('detail-product'),
-      detailServiceId: document.getElementById('detail-service-id'),
-      detailDate: document.getElementById('detail-date'),
-      detailUpdateDate: document.getElementById('detail-update-date'),
-      detailDeadline: document.getElementById('detail-deadline'),
-      detailClientPhone: document.getElementById('detail-client-phone'),
-      detailScPhone: document.getElementById('detail-sc-phone'),
-      detailScAddress: document.getElementById('detail-sc-address'),
-      detailManager: document.getElementById('detail-manager'),
-      detailComment: document.getElementById('detail-comment'),
-      detailHistory: document.getElementById('detail-history'),
-      
-      // Представления
-      tableView: document.getElementById('table-view'),
-      cardsView: document.getElementById('cards-view'),
-      
-      // Статистика
-      acceptedCount: document.getElementById('accepted-count'),
-      diagnosticsCount: document.getElementById('diagnostics-count'),
-      readyCount: document.getElementById('ready-count'),
-      overdueCount: document.getElementById('overdue-count'),
-      
-      // Уведомления
-      notification: document.getElementById('notification')
+      prevPageBtn: document.getElementById('prev-page'),
+      nextPageBtn: document.getElementById('next-page'),
+      pageSizeSelect: document.getElementById('page-size-select'),
+      showingFrom: document.getElementById('showing-from'),
+      showingTo: document.getElementById('showing-to'),
+      totalItems: document.getElementById('total-items'),
+      pageNumbers: document.getElementById('page-numbers'),
+      selectAllCheckbox: document.getElementById('select-all'),
+      notification: document.getElementById('notification'),
+      contextMenu: document.getElementById('context-menu'),
+      modalTitle: document.getElementById('modal-title')
     };
   }
   
-  // Инициализация обработчиков событий
   initEventListeners() {
-    // Фильтры и поиск
+    // Боковое меню
+    this.elements.toggleSidebar.addEventListener('click', () => {
+      this.elements.sidebar.classList.toggle('collapsed');
+    });
+    
+    // Поиск и фильтры
     this.elements.searchInput.addEventListener('input', () => this.render());
     this.elements.statusFilter.addEventListener('change', () => this.render());
     this.elements.urgencyFilter.addEventListener('change', () => this.render());
@@ -96,10 +76,32 @@ class ServiceTrackApp {
     
     // Кнопки управления
     this.elements.addRequestBtn.addEventListener('click', () => this.openAddModal());
-    this.elements.toggleViewBtn.addEventListener('click', () => this.toggleView());
+    this.elements.toggleViewBtn.addEventListener('click', (e) => {
+      if (e.target.closest('[data-view]')) {
+        const view = e.target.closest('[data-view]').dataset.view;
+        this.switchView(view);
+      }
+    });
     this.elements.exportExcelBtn.addEventListener('click', () => this.exportToExcel());
     this.elements.themeToggle.addEventListener('click', () => this.toggleTheme());
     
+    // Навигация по aside меню
+    document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+
+        const section = item.dataset.section;
+        document.querySelectorAll('main section').forEach(sec => sec.style.display = 'none');
+        if (section === 'reports') {
+          document.getElementById('section-reports').style.display = 'block';
+          this.renderReports();
+        } else {
+          document.querySelector('.content-area').style.display = 'block';
+        }
+      });
+    });
+
     // Модальные окна
     this.elements.closeModalButtons.forEach(btn => {
       btn.addEventListener('click', () => this.closeModals());
@@ -111,10 +113,21 @@ class ServiceTrackApp {
       this.saveRequest();
     });
     
-    // Редактирование заявки
-    this.elements.editRequestBtn.addEventListener('click', () => {
-      this.closeModals();
-      this.openEditModal(this.currentEditingId);
+    // Пагинация
+    this.elements.prevPageBtn.addEventListener('click', () => this.prevPage());
+    this.elements.nextPageBtn.addEventListener('click', () => this.nextPage());
+    this.elements.pageSizeSelect.addEventListener('change', () => {
+      this.pagination.pageSize = parseInt(this.elements.pageSizeSelect.value);
+      this.pagination.currentPage = 1;
+      this.render();
+    });
+    
+    // Выделение всех строк
+    this.elements.selectAllCheckbox.addEventListener('change', (e) => {
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = e.target.checked;
+      });
     });
     
     // Сортировка таблицы
@@ -124,22 +137,59 @@ class ServiceTrackApp {
         this.setSort(key);
       });
     });
+    
+    // Контекстное меню для строк таблицы
+    document.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('tr[data-id]')) {
+        this.showContextMenu(e, e.target.closest('tr'));
+      }
+    });
+    
+    // Закрытие контекстного меню при клике вне его
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#context-menu') && !e.target.closest('.action-buttons')) {
+        this.hideContextMenu();
+      }
+    });
+
+    // Dropdown меню
+    document.querySelectorAll('.dropdown-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const dropdown = e.target.closest('.dropdown');
+        dropdown.classList.toggle('active');
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('active'));
+      }
+    });
+
+    // Сохранение/загрузка файлов
+    const saveBtn = document.getElementById("save-file");
+    if (saveBtn) saveBtn.addEventListener("click", () => this.saveToFile());
+
+    const loadBtn = document.getElementById("load-file");
+    const fileInput = document.getElementById("file-input");
+    if (loadBtn && fileInput) {
+      loadBtn.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          this.loadFromFile(e.target.files[0]);
+          e.target.value = "";
+        }
+      });
+    }
   }
   
-  // Загрузка данных из localStorage
   loadData() {
     const savedData = localStorage.getItem('serviceRequests');
     this.requests = savedData ? JSON.parse(savedData) : this.getDefaultData();
-    this.updateStats();
+    this.pagination.totalItems = this.requests.length;
+    this.updatePagination();
   }
   
-  // Сохранение данных в localStorage
-  saveData() {
-    localStorage.setItem('serviceRequests', JSON.stringify(this.requests));
-    this.updateStats();
-  }
-  
-  // Получение тестовых данных
   getDefaultData() {
     return [
       {
@@ -205,23 +255,25 @@ class ServiceTrackApp {
     ];
   }
   
-  // Фильтрация данных
+  saveData() {
+    localStorage.setItem('serviceRequests', JSON.stringify(this.requests));
+    this.pagination.totalItems = this.requests.length;
+    this.updatePagination();
+  }
+  
   getFilteredData() {
     const searchTerm = this.elements.searchInput.value.toLowerCase();
     const statusFilter = this.elements.statusFilter.value;
     const urgencyFilter = this.elements.urgencyFilter.value;
     
     return this.requests.filter(request => {
-      // Поиск по клиенту, товару или номеру обращения
       const matchesSearch = 
         request.client.toLowerCase().includes(searchTerm) ||
         request.product.toLowerCase().includes(searchTerm) ||
         (request.serviceId && request.serviceId.toLowerCase().includes(searchTerm));
       
-      // Фильтр по статусу
       const matchesStatus = !statusFilter || request.status === statusFilter;
       
-      // Фильтр по срочности
       let matchesUrgency = true;
       if (urgencyFilter) {
         const today = new Date();
@@ -232,20 +284,6 @@ class ServiceTrackApp {
           matchesUrgency = request.urgent;
         } else if (urgencyFilter === 'overdue') {
           matchesUrgency = deadlineDate && deadlineDate < today;
-        } else if (urgencyFilter === 'today') {
-          const tomorrow = new Date(today);
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          matchesUrgency = deadlineDate && 
-                          deadlineDate >= today && 
-                          deadlineDate < tomorrow;
-        } else if (urgencyFilter === 'tomorrow') {
-          const tomorrow = new Date(today);
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const dayAfterTomorrow = new Date(tomorrow);
-          dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
-          matchesUrgency = deadlineDate && 
-                          deadlineDate >= tomorrow && 
-                          deadlineDate < dayAfterTomorrow;
         }
       }
       
@@ -253,19 +291,16 @@ class ServiceTrackApp {
     });
   }
   
-  // Сортировка данных
   sortData(data) {
     const { key, direction } = this.sortConfig;
     
     return [...data].sort((a, b) => {
-      // Особый случай для дедлайна
       if (key === 'deadline') {
         const dateA = this.parseDate(a.deadline) || new Date(0);
         const dateB = this.parseDate(b.deadline) || new Date(0);
         return direction === 'asc' ? dateA - dateB : dateB - dateA;
       }
       
-      // Стандартная сортировка для других полей
       let valueA = a[key];
       let valueB = b[key];
       
@@ -278,18 +313,14 @@ class ServiceTrackApp {
     });
   }
   
-  // Установка сортировки
   setSort(key) {
-    // Если уже сортируется по этому ключу, меняем направление
     if (this.sortConfig.key === key) {
       this.sortConfig.direction = this.sortConfig.direction === 'asc' ? 'desc' : 'asc';
     } else {
-      // Иначе устанавливаем новый ключ и направление по умолчанию
       this.sortConfig.key = key;
       this.sortConfig.direction = 'asc';
     }
     
-    // Обновляем иконки сортировки в заголовках таблицы
     document.querySelectorAll('#requests-table th').forEach(th => {
       th.innerHTML = th.innerHTML.replace(/&nbsp;▲|&nbsp;▼/g, '');
       if (th.getAttribute('data-sort') === this.sortConfig.key) {
@@ -300,159 +331,183 @@ class ServiceTrackApp {
     this.render();
   }
   
-  // Отрисовка данных
   render() {
     const filteredData = this.getFilteredData();
     const sortedData = this.sortData(filteredData);
+    this.pagination.totalItems = sortedData.length;
+    this.updatePagination();
+    
+    const paginatedData = this.getPaginatedData(sortedData);
     
     if (this.currentView === 'table') {
-      this.renderTableView(sortedData);
+      this.renderTableView(paginatedData);
     } else {
-      this.renderCardsView(sortedData);
+      this.renderCardsView(paginatedData);
     }
   }
   
-  // Отрисовка таблицы
+  getPaginatedData(data) {
+    const start = (this.pagination.currentPage - 1) * this.pagination.pageSize;
+    const end = start + this.pagination.pageSize;
+    return data.slice(start, end);
+  }
+  
+  updatePagination() {
+    const totalPages = Math.ceil(this.pagination.totalItems / this.pagination.pageSize);
+    
+    this.elements.showingFrom.textContent = ((this.pagination.currentPage - 1) * this.pagination.pageSize) + 1;
+    this.elements.showingTo.textContent = Math.min(
+      this.pagination.currentPage * this.pagination.pageSize,
+      this.pagination.totalItems
+    );
+    this.elements.totalItems.textContent = this.pagination.totalItems;
+    
+    this.elements.prevPageBtn.disabled = this.pagination.currentPage === 1;
+    this.elements.nextPageBtn.disabled = this.pagination.currentPage >= totalPages;
+    
+    // Обновление номеров страниц
+    this.elements.pageNumbers.innerHTML = '';
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, this.pagination.currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.className = `btn-icon ${i === this.pagination.currentPage ? 'active' : ''}`;
+      pageBtn.textContent = i;
+      pageBtn.addEventListener('click', () => {
+        this.pagination.currentPage = i;
+        this.render();
+      });
+      this.elements.pageNumbers.appendChild(pageBtn);
+    }
+  }
+  
+  prevPage() {
+    if (this.pagination.currentPage > 1) {
+      this.pagination.currentPage--;
+      this.render();
+    }
+  }
+  
+  nextPage() {
+    const totalPages = Math.ceil(this.pagination.totalItems / this.pagination.pageSize);
+    if (this.pagination.currentPage < totalPages) {
+      this.pagination.currentPage++;
+      this.render();
+    }
+  }
+  
   renderTableView(data) {
     this.elements.tableBody.innerHTML = '';
     
     data.forEach(request => {
       const row = document.createElement('tr');
+      row.dataset.id = request.id;
+      
       const deadlineClass = this.getDeadlineClass(request.deadline);
       const statusBadge = this.getStatusBadge(request.status);
       
       row.innerHTML = `
+        <td><input type="checkbox" class="row-checkbox" data-id="${request.id}"></td>
         <td>${request.id}</td>
-        <td>${request.date}</td>
         <td>${request.client}</td>
         <td>${request.product}</td>
-        <td>${request.serviceId || '-'}</td>
         <td>${statusBadge}</td>
-        <td>${request.updateDate}</td>
+        <td>${request.date}</td>
         <td class="${deadlineClass.class}" title="${deadlineClass.tooltip}">
           ${request.deadline || '-'}
           ${request.urgent ? ' <i class="fas fa-exclamation-circle urgent-icon" title="Срочная заявка"></i>' : ''}
         </td>
-        <td class="actions-cell">
-          <button class="btn-icon view-details" data-id="${request.id}" title="Просмотр">
-            <i class="fas fa-eye"></i>
-          </button>
-          <button class="btn-icon edit-request" data-id="${request.id}" title="Редактировать">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="btn-icon delete-request" data-id="${request.id}" title="Удалить">
-            <i class="fas fa-trash-alt"></i>
-          </button>
+        <td>
+          <div class="action-buttons">
+            <button class="btn-icon view-btn" data-id="${request.id}" title="Просмотр">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button class="btn-icon edit-btn" data-id="${request.id}" title="Редактировать">
+              <i class="fas fa-edit"></i>
+            </button>
+          </div>
         </td>
       `;
       
       this.elements.tableBody.appendChild(row);
     });
     
-    // Назначаем обработчики событий для кнопок в строке
-    document.querySelectorAll('.view-details').forEach(btn => {
+    // Назначаем обработчики событий для кнопок
+    document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', () => this.openDetailsModal(parseInt(btn.getAttribute('data-id'))));
     });
     
-    document.querySelectorAll('.edit-request').forEach(btn => {
+    document.querySelectorAll('.edit-btn').forEach(btn => {
       btn.addEventListener('click', () => this.openEditModal(parseInt(btn.getAttribute('data-id'))));
-    });
-    
-    document.querySelectorAll('.delete-request').forEach(btn => {
-      btn.addEventListener('click', () => this.deleteRequest(parseInt(btn.getAttribute('data-id'))));
     });
   }
   
-  // Отрисовка карточек
   renderCardsView(data) {
     this.elements.cardsContainer.innerHTML = '';
     
     data.forEach(request => {
       const deadlineClass = this.getDeadlineClass(request.deadline);
       const statusBadge = this.getStatusBadge(request.status);
-      
+
       const card = document.createElement('div');
-      card.className = 'card';
-      
-      if (request.urgent) {
-        card.innerHTML += '<div class="urgent-label">Срочно</div>';
-      }
-      
-      card.innerHTML += `
+      card.className = 'request-card';
+      card.innerHTML = `
         <div class="card-header">
-          <h3 class="card-title">${request.client}</h3>
-          <div class="card-status">${statusBadge}</div>
+          <span class="card-id">#${request.id}</span>
+          ${statusBadge}
         </div>
         <div class="card-body">
-          <div class="card-detail">
-            <span class="detail-label">Товар:</span>
-            <span class="detail-value">${request.product}</span>
-          </div>
-          <div class="card-detail">
-            <span class="detail-label">№ обращения:</span>
-            <span class="detail-value">${request.serviceId || '-'}</span>
-          </div>
-          <div class="card-detail">
-            <span class="detail-label">Дата:</span>
-            <span class="detail-value">${request.date}</span>
-          </div>
-          <div class="card-detail">
-            <span class="detail-label">Обновлено:</span>
-            <span class="detail-value">${request.updateDate}</span>
-          </div>
-          <div class="card-deadline ${deadlineClass.class}" title="${deadlineClass.tooltip}">
-            <i class="far fa-calendar-alt"></i>
-            <span>${request.deadline || 'Нет дедлайна'}</span>
-          </div>
+          <h3>${request.client}</h3>
+          <p><strong>Товар:</strong> ${request.product}</p>
+          <p><strong>Дата:</strong> ${request.date}</p>
+          <p class="${deadlineClass.class}" title="${deadlineClass.tooltip}">
+            <strong>Дедлайн:</strong> ${request.deadline || '-'}
+            ${request.urgent ? ' <i class="fas fa-exclamation-circle urgent-icon" title="Срочная"></i>' : ''}
+          </p>
         </div>
-        <div class="card-actions">
-          <button class="btn-icon view-details" data-id="${request.id}" title="Просмотр">
+        <div class="card-footer">
+          <button class="btn-icon view-btn" data-id="${request.id}" title="Просмотр">
             <i class="fas fa-eye"></i>
           </button>
-          <button class="btn-icon edit-request" data-id="${request.id}" title="Редактировать">
+          <button class="btn-icon edit-btn" data-id="${request.id}" title="Редактировать">
             <i class="fas fa-edit"></i>
-          </button>
-          <button class="btn-icon delete-request" data-id="${request.id}" title="Удалить">
-            <i class="fas fa-trash-alt"></i>
           </button>
         </div>
       `;
-      
       this.elements.cardsContainer.appendChild(card);
     });
-    
-    // Назначаем обработчики событий для кнопок в карточках
-    document.querySelectorAll('.view-details').forEach(btn => {
+
+    // Обработчики кнопок
+    document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', () => this.openDetailsModal(parseInt(btn.getAttribute('data-id'))));
     });
-    
-    document.querySelectorAll('.edit-request').forEach(btn => {
+    document.querySelectorAll('.edit-btn').forEach(btn => {
       btn.addEventListener('click', () => this.openEditModal(parseInt(btn.getAttribute('data-id'))));
-    });
-    
-    document.querySelectorAll('.delete-request').forEach(btn => {
-      btn.addEventListener('click', () => this.deleteRequest(parseInt(btn.getAttribute('data-id'))));
     });
   }
   
-  // Переключение между таблицей и карточками
-  toggleView() {
-    this.currentView = this.currentView === 'table' ? 'cards' : 'table';
+  switchView(view) {
+    this.currentView = view;
+    document.querySelectorAll('.view-switcher button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
     
-    if (this.currentView === 'table') {
-      this.elements.tableView.style.display = 'block';
-      this.elements.cardsView.style.display = 'none';
-      this.elements.toggleViewBtn.innerHTML = '<i class="fas fa-th"></i> Карточки';
+    if (view === 'table') {
+      document.querySelector('.table-responsive').style.display = 'block';
+      this.elements.cardsContainer.style.display = 'none';
     } else {
-      this.elements.tableView.style.display = 'none';
-      this.elements.cardsView.style.display = 'block';
-      this.elements.toggleViewBtn.innerHTML = '<i class="fas fa-table"></i> Таблица';
+      document.querySelector('.table-responsive').style.display = 'none';
+      this.elements.cardsContainer.style.display = 'grid';
     }
-    
     this.render();
   }
   
-  // Открытие модального окна для добавления заявки
   openAddModal() {
     this.currentEditingId = null;
     this.elements.modalTitle.textContent = 'Новая заявка';
@@ -460,7 +515,6 @@ class ServiceTrackApp {
     this.openModal(this.elements.requestModal);
   }
   
-  // Открытие модального окна для редактирования заявки
   openEditModal(id) {
     const request = this.requests.find(r => r.id === id);
     if (!request) return;
@@ -468,7 +522,6 @@ class ServiceTrackApp {
     this.currentEditingId = id;
     this.elements.modalTitle.textContent = `Редактирование заявки #${id}`;
     
-    // Заполняем форму данными
     this.elements.clientInput.value = request.client;
     this.elements.productInput.value = request.product;
     this.elements.serviceIdInput.value = request.serviceId || '';
@@ -482,89 +535,93 @@ class ServiceTrackApp {
     }
     
     this.elements.urgentCheckbox.checked = request.urgent;
-    this.elements.clientPhoneInput.value = request.clientPhone || '';
-    this.elements.scPhoneInput.value = request.scPhone || '';
-    this.elements.scAddressInput.value = request.scAddress || '';
-    this.elements.commentTextarea.value = request.comment || '';
     
     this.openModal(this.elements.requestModal);
   }
   
-  // Открытие модального окна с деталями заявки
   openDetailsModal(id) {
     const request = this.requests.find(r => r.id === id);
     if (!request) return;
-    
-    this.currentEditingId = id;
-    this.elements.requestIdSpan.textContent = `#${request.id}`;
-    
-    // Устанавливаем статус
-    this.elements.detailStatus.className = 'status-badge';
-    this.elements.detailStatus.classList.add(`badge-${this.getStatusClass(request.status)}`);
-    this.elements.detailStatus.innerHTML = this.getStatusBadge(request.status);
-    
-    // Устанавливаем срочность
-    this.elements.detailUrgency.innerHTML = request.urgent 
-      ? '<span class="urgent-label">Срочная заявка</span>' 
-      : '';
-    
-    // Заполняем остальные данные
-    this.elements.detailClient.textContent = request.client;
-    this.elements.detailProduct.textContent = request.product;
-    this.elements.detailServiceId.textContent = request.serviceId || '-';
-    this.elements.detailDate.textContent = request.date;
-    this.elements.detailUpdateDate.textContent = request.updateDate;
-    
+
     const deadlineClass = this.getDeadlineClass(request.deadline);
-    this.elements.detailDeadline.className = 'detail-value';
-    this.elements.detailDeadline.classList.add(deadlineClass.class);
-    this.elements.detailDeadline.textContent = request.deadline || '-';
-    this.elements.detailDeadline.title = deadlineClass.tooltip;
+    const statusBadge = this.getStatusBadge(request.status);
+
+    const modalHTML = `
+      <div class="modal active" id="details-modal">
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <h3>Детали заявки #${request.id}</h3>
+            <button class="btn-icon close-modal">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="detail-grid">
+              <div class="form-section">
+                <h3><i class="fas fa-info-circle"></i> Основная информация</h3>
+                <div class="detail-item">
+                  <span class="detail-label">Клиент:</span>
+                  <span class="detail-value">${request.client}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Товар:</span>
+                  <span class="detail-value">${request.product}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Номер обращения:</span>
+                  <span class="detail-value">${request.serviceId || '-'}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Статус:</span>
+                  <span class="detail-value">${statusBadge}</span>
+                </div>
+              </div>
+              <div class="form-section">
+                <h3><i class="fas fa-calendar-alt"></i> Даты</h3>
+                <div class="detail-item">
+                  <span class="detail-label">Дата создания:</span>
+                  <span class="detail-value">${request.date}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Дата обновления:</span>
+                  <span class="detail-value">${request.updateDate}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">Дедлайн:</span>
+                  <span class="detail-value ${deadlineClass.class}" title="${deadlineClass.tooltip}">
+                    ${request.deadline || '-'}
+                    ${request.urgent ? ' <i class="fas fa-exclamation-circle urgent-icon" title="Срочная заявка"></i>' : ''}
+                  </span>
+                </div>
+              </div>
+              <div class="form-section full-width">
+                <h3><i class="fas fa-comment"></i> Комментарий</h3>
+                <div class="detail-comment">${request.comment || 'Нет комментария'}</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary close-modal">Закрыть</button>
+            <button class="btn btn-primary" id="edit-from-details">Редактировать</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
     
-    this.elements.detailClientPhone.textContent = request.clientPhone || '-';
-    this.elements.detailScPhone.textContent = request.scPhone || '-';
-    this.elements.detailScAddress.textContent = request.scAddress || '-';
-    this.elements.detailManager.textContent = request.manager || '-';
-    this.elements.detailComment.textContent = request.comment || 'Нет комментария';
-    
-    // Заполняем историю
-    this.elements.detailHistory.innerHTML = '';
-    if (request.history && request.history.length > 0) {
-      request.history.forEach(item => {
-        const li = document.createElement('li');
-        li.textContent = item;
-        this.elements.detailHistory.appendChild(li);
+    document.querySelectorAll('#details-modal .close-modal').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('details-modal').remove();
       });
-    } else {
-      const li = document.createElement('li');
-      li.textContent = 'История изменений отсутствует';
-      this.elements.detailHistory.appendChild(li);
-    }
+    });
     
-    this.openModal(this.elements.detailsModal);
+    document.getElementById('edit-from-details').addEventListener('click', () => {
+      document.getElementById('details-modal').remove();
+      this.openEditModal(id);
+    });
   }
   
-  // Открытие модального окна
-  openModal(modal) {
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-  }
-  
-  // Закрытие всех модальных окон
-  closeModals() {
-    this.elements.requestModal.classList.remove('active');
-    this.elements.detailsModal.classList.remove('active');
-    document.body.style.overflow = '';
-  }
-  
-  // Сброс формы
-  resetForm() {
-    this.elements.requestForm.reset();
-    this.elements.deadlineInput.value = '';
-    this.elements.urgentCheckbox.checked = false;
-  }
-  
-  // Сохранение заявки
   saveRequest() {
     const client = this.elements.clientInput.value.trim();
     const product = this.elements.productInput.value.trim();
@@ -586,34 +643,29 @@ class ServiceTrackApp {
         ? this.formatDateForDisplay(this.elements.deadlineInput.value)
         : '',
       urgent: this.elements.urgentCheckbox.checked,
-      clientPhone: this.elements.clientPhoneInput.value.trim(),
-      scPhone: this.elements.scPhoneInput.value.trim(),
-      scAddress: this.elements.scAddressInput.value.trim(),
-      comment: this.elements.commentTextarea.value.trim(),
-      updateDate: now.toLocaleDateString('ru-RU')
+      updateDate: now.toLocaleDateString('ru-RU'),
+      comment: "",
+      clientPhone: "",
+      scPhone: "",
+      scAddress: "",
+      manager: "Текущий пользователь"
     };
     
     if (this.currentEditingId) {
-      // Редактирование существующей заявки
       const index = this.requests.findIndex(r => r.id === this.currentEditingId);
       if (index !== -1) {
-        // Сохраняем старые данные для истории
         const oldRequest = this.requests[index];
-        
-        // Обновляем заявку
         this.requests[index] = {
           ...oldRequest,
           ...requestData
         };
         
-        // Добавляем запись в историю
         if (!this.requests[index].history) {
           this.requests[index].history = [];
         }
         this.requests[index].history.push(historyEntry);
       }
     } else {
-      // Создание новой заявки
       const newId = this.requests.length > 0 
         ? Math.max(...this.requests.map(r => r.id)) + 1 
         : 1;
@@ -621,7 +673,6 @@ class ServiceTrackApp {
       this.requests.push({
         id: newId,
         date: now.toLocaleDateString('ru-RU'),
-        manager: 'Текущий пользователь', // Здесь можно добавить реального пользователя
         history: [historyEntry],
         ...requestData
       });
@@ -636,17 +687,68 @@ class ServiceTrackApp {
     );
   }
   
-  // Удаление заявки
   deleteRequest(id) {
-    if (!confirm('Вы уверены, что хотите удалить эту заявку?')) return;
-    
-    this.requests = this.requests.filter(request => request.id !== id);
-    this.saveData();
-    this.render();
-    this.showNotification('Заявка удалена', 'success');
+    if (confirm('Вы уверены, что хотите удалить эту заявку?')) {
+      this.requests = this.requests.filter(request => request.id !== id);
+      this.saveData();
+      this.render();
+      this.showNotification('Заявка удалена', 'success');
+    }
   }
   
-  // Экспорт в Excel
+  resetForm() {
+    this.elements.requestForm.reset();
+    this.elements.deadlineInput.value = '';
+    this.elements.urgentCheckbox.checked = false;
+  }
+  
+  openModal(modal) {
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+  
+  closeModals() {
+    this.elements.requestModal.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  
+  showContextMenu(event, row) {
+    event.preventDefault();
+    this.contextRequestId = parseInt(row.dataset.id);
+    
+    const contextMenu = this.elements.contextMenu;
+    contextMenu.style.display = 'block';
+    
+    const x = Math.min(event.clientX, window.innerWidth - contextMenu.offsetWidth - 10);
+    const y = Math.min(event.clientY, window.innerHeight - contextMenu.offsetHeight - 10);
+    
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+  }
+  
+  hideContextMenu() {
+    this.elements.contextMenu.style.display = 'none';
+    this.contextRequestId = null;
+  }
+  
+  handleContextAction(action) {
+    if (!this.contextRequestId) return;
+    
+    switch(action) {
+      case 'view':
+        this.openDetailsModal(this.contextRequestId);
+        break;
+      case 'edit':
+        this.openEditModal(this.contextRequestId);
+        break;
+      case 'delete':
+        this.deleteRequest(this.contextRequestId);
+        break;
+    }
+    
+    this.hideContextMenu();
+  }
+  
   exportToExcel() {
     try {
       const data = this.requests.map(request => ({
@@ -678,34 +780,6 @@ class ServiceTrackApp {
     }
   }
   
-  // Обновление статистики
-  updateStats() {
-    const counts = {
-      accepted: 0,
-      diagnostics: 0,
-      ready: 0,
-      overdue: 0
-    };
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    this.requests.forEach(request => {
-      if (request.status === 'Принят') counts.accepted++;
-      if (request.status === 'На диагностике') counts.diagnostics++;
-      if (request.status === 'Готов к выдаче') counts.ready++;
-      
-      const deadlineDate = this.parseDate(request.deadline);
-      if (deadlineDate && deadlineDate < today) counts.overdue++;
-    });
-    
-    this.elements.acceptedCount.textContent = counts.accepted;
-    this.elements.diagnosticsCount.textContent = counts.diagnostics;
-    this.elements.readyCount.textContent = counts.ready;
-    this.elements.overdueCount.textContent = counts.overdue;
-  }
-  
-  // Получение класса для дедлайна
   getDeadlineClass(deadlineStr) {
     if (!deadlineStr) return { class: '', tooltip: '' };
     
@@ -728,11 +802,6 @@ class ServiceTrackApp {
         class: 'deadline-today', 
         tooltip: 'Срок сдачи сегодня' 
       };
-    } else if (daysDiff === 1) {
-      return { 
-        class: 'deadline-tomorrow', 
-        tooltip: 'Срок сдачи завтра' 
-      };
     }
     
     return { 
@@ -741,61 +810,76 @@ class ServiceTrackApp {
     };
   }
   
-  // Получение бейджа статуса
   getStatusBadge(status) {
     const statusClass = this.getStatusClass(status);
-    const icon = this.getStatusIcon(status);
-    
-    return `
-      <span class="badge badge-${statusClass}">
-        <i class="${icon}"></i> ${status}
-      </span>
-    `;
+    return `<span class="status-badge badge-${statusClass}">${status}</span>`;
   }
   
-  // Получение класса для статуса
   getStatusClass(status) {
     switch (status) {
       case 'Принят': return 'accepted';
-      case 'Отправлен': return 'sent';
+      case 'В пути': return 'in-transit';
       case 'На диагностике': return 'diagnostics';
+      case 'Ожидает клиента': return 'waiting';
       case 'Готов к выдаче': return 'ready';
-      case 'Требуется звонок': return 'call';
-      case 'Отказано': return 'denied';
+      case 'Закрыт': return 'closed';
       default: return 'info';
     }
   }
   
-  // Получение иконки для статуса
-  getStatusIcon(status) {
-    switch (status) {
-      case 'Принят': return 'fas fa-check-circle';
-      case 'Отправлен': return 'fas fa-paper-plane';
-      case 'На диагностике': return 'fas fa-stethoscope';
-      case 'Готов к выдаче': return 'fas fa-box-open';
-      case 'Требуется звонок': return 'fas fa-phone';
-      case 'Отказано': return 'fas fa-ban';
-      default: return 'fas fa-info-circle';
-    }
+  renderReports() {
+    // График статусов
+    const statusCounts = {};
+    this.requests.forEach(r => {
+      statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+    });
+
+    const ctx1 = document.getElementById('statusChart').getContext('2d');
+    if (this.statusChart) this.statusChart.destroy();
+    this.statusChart = new Chart(ctx1, {
+      type: 'pie',
+      data: {
+        labels: Object.keys(statusCounts),
+        datasets: [{
+          data: Object.values(statusCounts),
+          backgroundColor: ['#2b9348','#f8961e','#4cc9f0','#d62828','#7209b7','#577590']
+        }]
+      }
+    });
+
+    // График по датам
+    const dateCounts = {};
+    this.requests.forEach(r => {
+      dateCounts[r.date] = (dateCounts[r.date] || 0) + 1;
+    });
+
+    const ctx2 = document.getElementById('dateChart').getContext('2d');
+    if (this.dateChart) this.dateChart.destroy();
+    this.dateChart = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: Object.keys(dateCounts),
+        datasets: [{
+          label: 'Заявки по датам',
+          data: Object.values(dateCounts),
+          backgroundColor: '#3a86ff'
+        }]
+      }
+    });
   }
   
-  // Парсинг даты из строки формата "dd.mm.yyyy"
   parseDate(dateStr) {
     if (!dateStr) return null;
-    
     const [day, month, year] = dateStr.split('.');
     return new Date(`${year}-${month}-${day}`);
   }
   
-  // Форматирование даты для отображения (из формата "yyyy-mm-dd" в "dd.mm.yyyy")
   formatDateForDisplay(dateStr) {
     if (!dateStr) return '';
-    
     const [year, month, day] = dateStr.split('-');
     return `${day}.${month}.${year}`;
   }
   
-  // Показ уведомления
   showNotification(message, type = 'info') {
     const notification = this.elements.notification;
     notification.textContent = message;
@@ -807,7 +891,6 @@ class ServiceTrackApp {
     }, 3000);
   }
   
-  // Управление темой
   setupTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     this.setTheme(savedTheme);
@@ -818,9 +901,9 @@ class ServiceTrackApp {
     localStorage.setItem('theme', theme);
     
     if (theme === 'dark') {
-      this.elements.themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+      this.elements.themeToggle.innerHTML = '<i class="fas fa-sun"></i> <span>Тема</span>';
     } else {
-      this.elements.themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+      this.elements.themeToggle.innerHTML = '<i class="fas fa-moon"></i> <span>Тема</span>';
     }
   }
   
@@ -829,12 +912,52 @@ class ServiceTrackApp {
     const newTheme = currentTheme === 'light' ? 'dark' : 'light';
     this.setTheme(newTheme);
   }
+  
+  saveToFile() {
+    const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const fileName = `requests_${dateStr}.json`;
+    const dataStr = JSON.stringify(this.requests, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.showNotification(`Файл сохранён: ${fileName}`, "success");
+  }
+
+  loadFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (Array.isArray(data)) {
+          this.requests = data;
+          this.saveData();
+          this.render();
+          this.showNotification("Файл успешно загружен", "success");
+        } else {
+          throw new Error("Неверный формат");
+        }
+      } catch (err) {
+        console.error("Ошибка загрузки файла:", err);
+        this.showNotification("Ошибка загрузки файла", "error");
+      }
+    };
+    reader.readAsText(file);
+  }
 }
 
-// Инициализация приложения после загрузки DOM
+// Инициализация приложения
 document.addEventListener('DOMContentLoaded', () => {
   const app = new ServiceTrackApp();
   
-  // Делаем app глобальной для доступа из консоли (для отладки)
-  window.app = app;
+  // Обработчики для контекстного меню
+  document.getElementById('context-menu').addEventListener('click', (e) => {
+    const actionItem = e.target.closest('li[data-action]');
+    if (actionItem) {
+      app.handleContextAction(actionItem.dataset.action);
+    }
+  });
 });
