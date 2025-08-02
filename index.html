@@ -1,145 +1,155 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ServiceDesk | Управление возвратами</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ServiceDesk Pro | Управление заявками</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-  <div class="app-container">
-    <!-- Шапка приложения -->
-    <header class="app-header">
+  <div class="glass-container">
+    <!-- Header with stats -->
+    <header class="dashboard-header">
       <div class="header-content">
-        <h1>
-          <i class="fas fa-exchange-alt"></i>
-          <span>ServiceDesk</span>
-          <small>Управление возвратами</small>
-        </h1>
-        
-        <div class="header-controls">
-          <div id="status-summary" class="status-summary">
-            <div class="summary-item accepted">
-              <i class="fas fa-check-circle"></i>
-              <span>4</span>
-            </div>
-            <div class="summary-item diagnostics">
-              <i class="fas fa-stethoscope"></i>
-              <span>2</span>
-            </div>
-            <div class="summary-item ready">
-              <i class="fas fa-box-open"></i>
-              <span>1</span>
-            </div>
+        <h1><i class="fas fa-tools"></i> ServiceDesk <span>Pro</span></h1>
+        <div class="stats-container">
+          <div class="stat-card accepted">
+            <span class="stat-value" id="accepted-count">0</span>
+            <span class="stat-label">Принято</span>
           </div>
-          
-          <button id="theme-toggle" class="theme-toggle" title="Сменить тему">
-            <i class="fas fa-moon"></i>
-          </button>
+          <div class="stat-card diagnostics">
+            <span class="stat-value" id="diagnostics-count">0</span>
+            <span class="stat-label">Диагностика</span>
+          </div>
+          <div class="stat-card ready">
+            <span class="stat-value" id="ready-count">0</span>
+            <span class="stat-label">Готово</span>
+          </div>
         </div>
       </div>
     </header>
 
-    <!-- Основное содержимое -->
-    <main class="app-main">
-      <div class="toolbar">
-        <div class="filters">
-          <div class="filter-group">
-            <label for="status-filter"><i class="fas fa-filter"></i> Статус:</label>
-            <select id="status-filter" class="styled-select">
-              <option value="">Все заявки</option>
-              <option value="Принят">Принят</option>
-              <option value="Отправлен">Отправлен</option>
-              <option value="На диагностике">На диагностике</option>
-              <option value="Готов к выдаче">Готов к выдаче</option>
-              <option value="Требуется звонок">Требуется звонок</option>
-              <option value="Отказано">Отказано</option>
-            </select>
-          </div>
-          
-          <div class="search-group">
-            <i class="fas fa-search"></i>
-            <input type="text" id="search-box" placeholder="Поиск по клиенту или товару...">
-          </div>
+    <!-- Main controls -->
+    <div class="control-panel">
+      <div class="view-toggle">
+        <button id="toggle-view-btn" class="toggle-btn active"><i class="fas fa-table"></i> Таблица</button>
+        <button id="toggle-cards-btn" class="toggle-btn"><i class="fas fa-th-large"></i> Карточки</button>
+      </div>
+      
+      <div class="search-filter">
+        <div class="search-box">
+          <i class="fas fa-search"></i>
+          <input type="text" id="search-box" placeholder="Поиск по клиенту или товару...">
         </div>
         
-        <div class="actions">
-          <button id="toggle-view-btn" class="view-toggle">
-            <i class="fas fa-table"></i>
-            <span>Таблица</span>
-          </button>
-          
-          <div class="export-import">
-            <button id="export-btn" class="export-btn">
-              <i class="fas fa-file-export"></i>
-              <span>Экспорт</span>
-            </button>
-            <button id="import-btn" class="import-btn">
-              <i class="fas fa-file-import"></i>
-              <span>Импорт</span>
-            </button>
-            <input type="file" id="import-file" style="display:none" />
+        <div class="multi-select">
+          <div class="select-header">
+            <span>Статусы</span>
+            <i class="fas fa-chevron-down"></i>
+          </div>
+          <div class="select-options">
+            <label><input type="checkbox" value="Принят" checked> Принят</label>
+            <label><input type="checkbox" value="На диагностике" checked> Диагностика</label>
+            <label><input type="checkbox" value="Готов к выдаче" checked> Готово</label>
+            <label><input type="checkbox" value="Требуется звонок" checked> Звонок</label>
           </div>
         </div>
       </div>
+      
+      <button id="add-request-btn" class="primary-btn floating-btn">
+        <i class="fas fa-plus"></i> Новая заявка
+      </button>
+    </div>
 
-      <!-- Контейнер для таблицы и карточек -->
-      <div class="content-view">
-        <table id="status-table">
-          <thead>
-            <tr>
-              <th>№</th>
-              <th>Дата</th>
-              <th>Клиент</th>
-              <th>Товар</th>
-              <th>№ обращения</th>
-              <th>Статус</th>
-              <th>Обновлено</th>
-              <th>Дедлайн</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody id="table-body"></tbody>
-        </table>
+    <!-- Table view -->
+    <div class="table-container" id="table-view">
+      <table id="status-table">
+        <thead>
+          <tr>
+            <th>№</th>
+            <th>Дата <i class="fas fa-sort"></i></th>
+            <th>Клиент <i class="fas fa-sort"></i></th>
+            <th>Товар</th>
+            <th>№ обращения</th>
+            <th>Статус</th>
+            <th>Обновлено</th>
+            <th>Дедлайн <i class="fas fa-sort"></i></th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
 
-        <div id="cards-container" class="cards-grid"></div>
-      </div>
+    <!-- Cards view -->
+    <div class="cards-container" id="cards-view">
+      <div class="cards-grid" id="cards-grid"></div>
+    </div>
 
-      <!-- Панель добавления новой заявки -->
-      <div class="add-panel">
-        <h3><i class="fas fa-plus-circle"></i> Новая заявка</h3>
-        <div class="add-form">
-          <div class="form-group">
-            <input type="text" id="new-client" placeholder="ФИО клиента">
-            <i class="fas fa-user"></i>
-          </div>
-          <div class="form-group">
-            <input type="text" id="new-product" placeholder="Наименование товара">
-            <i class="fas fa-box"></i>
-          </div>
-          <div class="form-group">
-            <input type="text" id="new-service-id" placeholder="Номер обращения">
-            <i class="fas fa-hashtag"></i>
-          </div>
-          <button id="add-request-btn" class="primary-btn">
-            <i class="fas fa-plus"></i> Добавить
-          </button>
-        </div>
-      </div>
-    </main>
+    <!-- Floating action button -->
+    <div class="fab-container">
+      <button id="theme-toggle" class="fab-btn">
+        <i class="fas fa-moon"></i>
+      </button>
+      <button id="export-btn" class="fab-btn">
+        <i class="fas fa-file-export"></i>
+      </button>
+      <button id="import-btn" class="fab-btn">
+        <i class="fas fa-file-import"></i>
+      </button>
+    </div>
   </div>
 
-  <!-- Модальное окно -->
-  <div id="modal" class="modal">
+  <!-- Add Request Modal -->
+  <div class="modal" id="add-modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Детали заявки</h3>
+        <h2>Новая заявка</h2>
         <span class="close">&times;</span>
       </div>
-      <div id="modal-body" class="modal-body"></div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="new-client">Клиент</label>
+          <input type="text" id="new-client" placeholder="ФИО клиента">
+        </div>
+        <div class="form-group">
+          <label for="new-product">Товар</label>
+          <input type="text" id="new-product" placeholder="Наименование товара">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="new-service-id">№ обращения</label>
+            <input type="text" id="new-service-id" placeholder="СЦ-001">
+          </div>
+          <div class="form-group">
+            <label for="new-deadline">Дедлайн</label>
+            <input type="date" id="new-deadline">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="new-comment">Комментарий</label>
+          <textarea id="new-comment" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-add-btn" class="secondary-btn">Отмена</button>
+        <button id="confirm-add-btn" class="primary-btn">Добавить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Request Details Modal -->
+  <div class="modal" id="details-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Детали заявки <span id="request-id"></span></h2>
+        <span class="close">&times;</span>
+      </div>
+      <div class="modal-body">
+        <!-- Content will be dynamically loaded here -->
+      </div>
     </div>
   </div>
 
